@@ -1,20 +1,22 @@
-`timescale 1ns / 1ps
+// `timescale 1ns / 1ps
 
 module testBench;
     reg clock,reset,go;
     reg[7:0] SW;
     wire[15:0] display;
     initial begin
-       clock = 0;
-       reset = 1;
-       go = 0;
-       #2 reset = 0;
-       #5 SW = 8'b00000001;
-       #5 go = 1;
-       #5 go = 0;
-       #5 SW = 8'b00110011;
-       #5 go = 1;
-    end
+    	$dumpfile ("shifter.vcd");
+		$dumpvars;
+		clock = 0;
+		reset = 1;
+		go = 0;
+		#10 reset = 0;
+		#10 SW = 8'b00000010;
+		#10 go = 1;
+		#10 go = 0;
+		#10 SW = 8'b00000110;
+		#10 go = 1;
+	end
      
     always begin
        #5 clock <= ~clock;
@@ -24,7 +26,7 @@ module testBench;
 endmodule
 
 module breadBoard(clock,reset,SW,go,display);
-   
+	 
     input clock,reset,go;
     input[7:0] SW;
     output wire[15:0] display;
@@ -89,7 +91,7 @@ module ASM(clock,reset,SW,is_zero,x,
     MUX9 M5(ldShift,u4,{u2[1],u2[0],u4[8:2]},u8);   
 
     doubleV M6(double,outputBus1,u6);
-    addSub M7(AddOSub,u6,outputBus2,u7);
+    addSub M7(AddOSub,outputBus2,u6,u7);
     checkZero M8(countReg,is_zero);
 
     decrement3Bit M9(ldCount,countReg,u5);
@@ -139,7 +141,7 @@ module controllerFsm(PS,go,is_zero,x,NS);
     assign NS[0] = (PS[0]&(!go)) | (PS[4]&(!go));
     assign NS[1] = (PS[0]&go) | (PS[1]&(go));
     assign NS[2] = (PS[1]&(!go)) | (PS[2]&(!go));
-    assign NS[3] = PS[2]&go;
+    assign NS[3] = PS[2]&go | PS[9];
     assign NS[4] = (PS[3]&(!is_zero)) | (PS[4]&go);
     assign NS[5] = (PS[3] & is_zero & ( ((!x[2])&(!x[1])& x[0]) | ((!x[2])&(x[1])& (!x[0]))));
     assign NS[6] = (PS[3] & is_zero & ( ((x[2])&(!x[1])& x[0]) | ((x[2])&(x[1])& (!x[0]))));
@@ -178,10 +180,10 @@ module checkZero(count,is_zero);
 endmodule
 
 module addSub(AddOSub,inp1,inp2,out);
-    input AddOSub;
-    input[7:0] inp1,inp2;
-    output[7:0] out;
-    assign out = AddOSub?(inp1+inp2):(inp1-inp2);
+	input AddOSub;
+	input[7:0] inp1,inp2;
+	output[7:0] out;
+	assign out = AddOSub?(inp1+inp2):(inp1-inp2);
 endmodule
 
 module showOutput(enable,inp,out);
@@ -232,7 +234,7 @@ module register8bit(update,clock,reset,data);
     output[7:0] data;
     (*keep = "true"*)reg[7:0] memory;
     assign data = memory;
-    always @(posedge clock) begin
+    always @(negedge clock) begin
         if(reset == 1)
             memory = 8'b0;
         else
@@ -246,11 +248,11 @@ module register9bit(update,clock,reset,data);
     output[8:0] data;
     (*keep = "true"*)reg[8:0] memory;
     assign data = memory;
-    always @(posedge clock) begin
-        if(reset == 1)
-            memory = 9'b0;
-        else
-            memory = update[8:0];
+    always @(negedge clock) begin
+		if(reset == 1)
+	    	memory = 9'b0;
+		else
+		    memory = update[8:0];
     end
 endmodule
 
@@ -261,8 +263,8 @@ module register10bit(update,clock,reset,data);
     (*keep = "true"*)reg[9:0] memory;
     assign data = memory;
     always @(posedge clock) begin
-        if(reset == 1)
-            memory = 10'b0;
+		if(reset == 1)
+    		memory = 10'b0000000001;
         else
             memory = update[9:0];
     end
@@ -274,10 +276,10 @@ module register3bit(update,clock,reset,data);
     output[2:0] data;
     (*keep = "true"*)reg[2:0] memory;
     assign data = memory;
-    always @(posedge clock) begin
-        if(reset == 1)
-            memory = 3'b101;
-        else
-            memory = update[2:0];
+    always @(negedge clock) begin
+		if(reset == 1)
+		    memory = 3'b101;
+		else
+		    memory = update[2:0];
     end
 endmodule
