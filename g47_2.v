@@ -1,242 +1,214 @@
-module breadBoard;
-    wire[8:0] in;
-    wire[3:0] count;
+`timescale 1ns / 1ps
+
+module sqrt2(in,reset,go,clk,over,out);
+    output [3:0] out;
+    output over;
+    input clk,go,reset;
+    input[7:0] in;
     wire transSw,transCount,transSq,transK;
     wire ldCount,ldSq,ldK;
-    wire go,reset,clk;
     wire[8:0] inBus;
     wire[8:0] outBus1;
     wire[8:0] outBus2;
     wire[2:0] func;
-    ASM_beh m1(in,go,reset,inBus,ldSq,ldK,ldCount,transSw,transSq,transK,transCount,outBus1,outBus2,count);
+    assign over = inBus[8];
+    ASM m1(clk,in,reset,ldSq,ldK,ldCount,transSw,transSq,transK,transCount,inBus,outBus1,outBus2,out);
     ALU m2(outBus1,outBus2,func,inBus);
-    controller m3(ldSq,ldK,ldCount,transSw,transSq,transK,transCount,func,go,clk,reset,inBus[8]);
-    testBench m4(clk,go,reset,in);
+controller m3(ldSq,ldK,ldCount,transSw,transSq,transK,transCount,func,go,clk,reset,inBus[8]);
 endmodule
 
-module testBench(clock,go,rst,SW);
-    output reg clock,rst;
-    output reg[8:0] SW;
-    output reg go;
+module testBench;
+    reg clock,rst;
+    reg[7:0] SW;
+    reg go;
+    wire over;
+    wire[3:0] out; 
     initial
     begin
         $dumpfile ("shifter.vcd");
         $dumpvars;
-        SW <= 9'b001000000;
-        rst <= 0;
-        go <= 0;
-        clock <= 0;
-        #2 rst <= 1;
-        #5 rst <= 0;
-        #5 go <= 1;
-        
+
+        rst = 0;
+        go = 0;
+        clock = 0;
+        #10 rst = 1;
+        #10 rst = 0;
+        #10 SW = 8'b01000000;
+        #10 go = 1;
     end
-   
     always
     begin
         #5 clock = ~clock;
     end
+sqrt2 M1(SW,rst,go,clock,over,out);
 endmodule
 
-module ASM_beh(
-        in,go,reset,inBus,
-        ldSq,ldK,ldCount,
-        transSw,transSq,transK,transCount,
-        outBus1,outBus2,
-        count
+
+module ASM(
+         clk,in,reset,
+         ldSq,ldK,ldCount,
+         transSw,transSq,transK,transCount,
+         inBus,outBus1,outBus2,
+         count
     );
 
-    input[8:0] in;
+    input[7:0] in;
     input[8:0] inBus;
-    input go,reset;
+    input reset,clk;
     input ldSq,ldK,ldCount;
     input transSw,transSq,transK,transCount;
-    output reg[8:0]    outBus1,outBus2;
+    output reg[8:0] outBus1;
+    output reg[8:0] outBus2;
     output reg[3:0] count;
 
     reg[8:0] sq;
     reg[8:0] k;
 
-    always @(posedge reset) begin
-        outBus1 <= 9'b0;
-        outBus2 <= 9'b0;
-        count <= 4'b0;
-        sq <= 9'b0;
+
+    always @(negedge clk) begin
+    if(reset == 1)
+        sq <= 9'b0;          
+    else if(ldSq == 1)
+        sq <= inBus; 
+    end
+    always @(negedge clk) begin 
+    if(reset == 1)
         k <= 9'b0;
+    else if(ldK == 1)
+    k <= inBus;
+    end
+    always @(negedge clk) begin
+    if(reset == 1)
+         count <= 4'b0;
+    else if(ldCount == 1)
+    count <= inBus[3:0];
     end
 
-    always @(posedge ldSq)
-        sq <= inBus;
-    always @(posedge ldK)
-        k <= inBus;
-    always @(posedge ldCount)
-        count <= inBus;
-
-    always @(posedge transSq)
-        outBus1 <= sq;
-    always @(posedge transSw)
-        outBus1 <= in;
-    always @(posedge transCount)
-        outBus1 <= count;
-    always @(posedge transK)
-        outBus2 <= k;
+    always @(posedge clk) begin
+        if(reset == 1) begin
+            outBus1 <= 9'b0;
+            outBus2 <= 9'b0;
+        end
+        else if (transSq == 1) 
+            outBus1 <= sq;
+        else if(transSw == 1)
+            outBus1 <= {1'b0,in};
+        else if( transCount == 1)
+            outBus1 <= {5'b0,count};
+        else 
+            outBus1 <= sq;
+        if(transK == 1)
+            outBus2 <= k;
+    end
 endmodule
 
-module ALU(x,y,func,z);
+module ALU(x,y,f,z);
 
     input[8:0] x;
     input[8:0] y;
-    input[2:0] func;
-    output reg[8:0] z;
-    always @(x or y or func) begin
-            case(func)
-                3'b000 :
-                z <= x;
-                3'b001 :
-                z <= 9'b0;
-                3'b010 :
-                z <= 1;
-                3'b011 :
-                z <= x + 9'b000000001;
-                3'b100 :
-                z <= x - y;
-                3'b101 :
-                z <= y + 9'b000000010;
-            endcase
-        end
+    input[2:0] f;
+    output[8:0] z;
+    
+    wire[8:0] add1;
+    wire[8:0] add2;
+    wire[8:0] sub;
+
+    assign add1 = x + 9'b000000001;
+    assign sub = x - y;
+    assign add2 = y + 9'b000000010;  
+
+    assign z[0] = ((~f[2])&(~f[1])&(~f[0])&x[0]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&1) + ((~f[2])&(f[1])&(f[0])&(add1[0])) + ((f[2])&(~f[1])&(~f[0])&(sub[0])) + ((f[2])&(~f[1])&(f[0])&(add2[0]));
+    assign z[1] = ((~f[2])&(~f[1])&(~f[0])&x[1]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[1])) + ((f[2])&(~f[1])&(~f[0])&(sub[1])) + ((f[2])&(~f[1])&(f[0])&(add2[1]));
+    assign z[2] = ((~f[2])&(~f[1])&(~f[0])&x[2]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[2])) + ((f[2])&(~f[1])&(~f[0])&(sub[2])) + ((f[2])&(~f[1])&(f[0])&(add2[2]));
+    assign z[3] = ((~f[2])&(~f[1])&(~f[0])&x[3]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[3])) + ((f[2])&(~f[1])&(~f[0])&(sub[3])) + ((f[2])&(~f[1])&(f[0])&(add2[3]));
+    assign z[4] = ((~f[2])&(~f[1])&(~f[0])&x[4]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[4])) + ((f[2])&(~f[1])&(~f[0])&(sub[4])) + ((f[2])&(~f[1])&(f[0])&(add2[4]));
+    assign z[5] = ((~f[2])&(~f[1])&(~f[0])&x[5]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[5])) + ((f[2])&(~f[1])&(~f[0])&(sub[5])) + ((f[2])&(~f[1])&(f[0])&(add2[5]));
+    assign z[6] = ((~f[2])&(~f[1])&(~f[0])&x[6]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[6])) + ((f[2])&(~f[1])&(~f[0])&(sub[6])) + ((f[2])&(~f[1])&(f[0])&(add2[6]));
+    assign z[7] = ((~f[2])&(~f[1])&(~f[0])&x[7]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[7])) + ((f[2])&(~f[1])&(~f[0])&(sub[7])) + ((f[2])&(~f[1])&(f[0])&(add2[7]));
+    assign z[8] = ((~f[2])&(~f[1])&(~f[0])&x[8]) + ((~f[2])&(~f[1])&(f[0])&0) + ((~f[2])&(f[1])&(~f[0])&0) + ((~f[2])&(f[1])&(f[0])&(add1[8])) + ((f[2])&(~f[1])&(~f[0])&(sub[8])) + ((f[2])&(~f[1])&(f[0])&(add2[8]));
+
 endmodule   
 
 module controller(
-        ldSq,ldK,ldCount,
-        transSw,transSq,transK,transCount,
-        func,Go,clk,reset,over
-        );
-
-    reg go;
-    reg[2:0] state;
+             ldSq,ldK,ldCount,
+             transSw,transSq,transK,transCount,
+             func,Go,clk,reset,over
+             );
 
     input Go,clk,over,reset;
-    output reg[2:0] func;
+    output[2:0] func;
     output reg ldSq,ldK,ldCount;
     output reg transSq,transSw,transCount,transK;
 
-    always @(posedge reset) begin
-        func <= 3'b0;
-        state <= 3'b0;
-        go <= 0;
-        ldSq <= 0;
-        ldK <= 0;
-        ldCount <= 0;
-        transSq <= 0;
-        transSw <= 0;
-        transCount <= 0;
-        transK <= 0;
+    wire[6:0] NS;
+    reg[6:0] PS;
+        
+    always @(posedge clk)begin 
+        if(reset == 1)
+            PS = 7'b0000001;
+        else 
+            PS = NS;
     end
 
-    always @(Go)
-        go <= Go;
+    always @(negedge clk) begin
+        if(NS[0])
+            transSw = 1;
+        else 
+            transSw = 0;
+    end
+
+    always @(negedge clk) begin
+        if(NS[3])
+            transSq = 1;
+        else 
+            transSq = 0;
+    end
+
+    always @(negedge clk) begin
+        if(NS[3] || NS[5])
+            transK = 1;
+        else 
+            transK = 0;
+    end
+
+    always @(negedge clk) begin           
+        if(NS[4])
+            transCount = 1;
+        else 
+            transCount = 0;
+    end
 
     always @(posedge clk) begin
-        ldSq = 0;
-        ldK = 0; 
-        ldCount = 0;
-        case(state)
-            3'b000:
-            begin
-                transSw = 1;
-                func = 000;
-            end
-
-            3'b001:
-            begin
-                func = 010;
-            end
-
-            3'b010:
-            begin
-                func = 001;
-            end
-
-            3'b011:
-            begin
-                transSq = 1; 
-                transK = 1;
-                func = 100;
-            end
-
-            3'b100:
-            begin
-                transCount = 1;
-                func = 011;
-            end
-
-            3'b101:
-            begin
-                transK = 1;
-                func = 101;
-            end
-
-            3'b110:
-            begin
-                ldSq = 0;
-                ldK = 0; 
-                ldCount = 0;
-            end
-
-        endcase
+        if(NS[0] || NS[3])
+            ldSq <= 1;
+        else
+            ldSq <= 0;
     end
 
-    always @(negedge clk)
-    begin
-        transSq <= 0;
-        transK <= 0;
-        transCount <= 0;
-        transSw <= 0;
-        case(state)
-            3'b000:
-            begin
-                ldSq <= 1;
-                if(go == 1)
-                    state <= 001;
-            end
-
-            3'b001:
-            begin
-                ldK <= 1; 
-                state <= 010;
-            end
-
-            3'b010:
-            begin
-                ldCount <= 1;
-                state <= 011;
-            end
-
-            3'b011:
-            begin
-                ldSq <= 1;
-                if(over == 1)
-                    state <= 110;
-                else
-                    state <= 100;
-            end
-
-            3'b100:
-            begin
-                ldCount <= 1;
-                state <= 101;
-            end
-
-            3'b101:
-            begin
-                ldK <= 1;
-                state <= 011;
-            end
-
-            3'b110:
-            begin
-                $display("GOOD WORK MODULE!");
-            end
-        endcase
+    always @(posedge clk) begin
+        if( NS[1] || NS[5])
+            ldK = 1;
+        else    
+            ldK = 0;
     end
+
+    always @(posedge clk) begin
+        if(NS[2] || NS[4])
+            ldCount = 1;
+        else 
+            ldCount = 0;
+    end
+
+    assign NS[0] = PS[0]&(~Go);
+    assign NS[1] = PS[0]&Go;
+    assign NS[2] = PS[1];
+    assign NS[3] = PS[2] | PS[5];
+    assign NS[4] = PS[3]&(~over);
+    assign NS[5] = PS[4];
+    assign NS[6] = PS[3]&over;
+    
+    assign func[0] = PS[2] | PS[4] | PS[5];
+    assign func[1] = PS[1] | PS[4];
+    assign func[2] = PS[3] | PS[5] | PS[6];
+    
 endmodule
